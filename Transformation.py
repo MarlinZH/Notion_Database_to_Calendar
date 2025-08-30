@@ -1,5 +1,6 @@
 from notion_client import Client
 from datetime import datetime, timedelta
+from os import env
 
 notion = Client(auth="your_notion_secret")
 database_id = "your_database_id"
