@@ -1,7 +1,12 @@
 import os
 import logging
 from notion_client import Client
+<<<<<<< HEAD
 from datetime import datetime, timedelta, timezone
+=======
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+>>>>>>> a13b210936f8edf81e6f877a00c174ea75878d76
 
 # ----------------- Setup -----------------
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
