@@ -1,20 +1,30 @@
 import os
 import logging
-from notion_client import Client
 from datetime import datetime, timedelta, timezone
+from notion_client import Client
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 
 # ----------------- Setup -----------------
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
+# Notion setup
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
-TASKS_DB_ID = os.getenv("TASKS_DB_ID")          # Source tasks DB
-CALENDAR_DB_ID = os.getenv("CALENDAR_DB_ID")    # Target calendar DB
-
-if not NOTION_TOKEN or not TASKS_DB_ID or not CALENDAR_DB_ID:
-    raise ValueError("Missing environment variables. Please set NOTION_TOKEN, TASKS_DB_ID, CALENDAR_DB_ID.")
+TASKS_DB_ID = os.getenv("TASKS_DB_ID")
 
 notion = Client(auth=NOTION_TOKEN)
 
+# Google Calendar setup
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT")  # path to JSON file
+CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to primary calendar
+
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+)
+calendar_service = build('calendar', 'v3', credentials=credentials)
+
+# Days mapping
 days_of_week = {
     "Monday": 0,
     "Tuesday": 1,
@@ -38,51 +48,50 @@ def get_all_tasks(db_id):
         next_cursor = response.get("next_cursor")
     return results
 
-
 def get_next_weekday(base_date, target_weekday):
-    """Find the next occurrence of a given weekday."""
     days_ahead = target_weekday - base_date.weekday()
     if days_ahead <= 0:
         days_ahead += 7
     return base_date + timedelta(days=days_ahead)
 
+def event_exists_in_notion(task_id):
+    """Check if a Google Calendar event has already been linked in Notion."""
+    task = notion.pages.retrieve(task_id)
+    props = task.get("properties", {})
+    return "Google Event ID" in props and props["Google Event ID"].get("rich_text")
 
-def event_exists(original_task_id):
-    """Check if an event for this task already exists in the calendar DB."""
-    response = notion.databases.query(
-        database_id=CALENDAR_DB_ID,
-        filter={
-            "property": "Original Task ID",
-            "rich_text": {"equals": original_task_id}
-        }
-    )
-    return len(response["results"]) > 0
-
+def create_google_event(task_name, task_datetime):
+    """Create a Google Calendar event and return the event ID."""
+    event = {
+        'summary': task_name,
+        'start': {'dateTime': task_datetime.isoformat(), 'timeZone': 'America/New_York'},
+        'end': {'dateTime': (task_datetime + timedelta(hours=1)).isoformat(), 'timeZone': 'America/New_York'},
+    }
+    created_event = calendar_service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
+    return created_event['id'], created_event.get('htmlLink')
 
 # ----------------- Main Logic -----------------
-def spread_tasks():
-    today = datetime.now(timezone.utc)  # timezone-aware
+def push_tasks_to_calendar():
+    today = datetime.now(timezone.utc)
     tasks = get_all_tasks(TASKS_DB_ID)
 
     for task in tasks:
+        task_id = task["id"]
         props = task.get("properties", {})
-        task_id = task.get("id")
 
-        # Extract safely
+        # Skip if already linked to Google Calendar
+        if event_exists_in_notion(task_id):
+            logging.info(f"Skipping {task_id}: already linked to calendar.")
+            continue
+
         try:
             task_name = props["Name"]["title"][0]["text"]["content"]
             time_slot = props["Time Slot"]["rich_text"][0]["text"]["content"]
             days = [d["name"] for d in props["Days"]["multi_select"]]
         except (KeyError, IndexError) as e:
-            logging.warning(f"Skipping task {task_id}: missing required property ({e})")
+            logging.warning(f"Skipping {task_id}: missing required property ({e})")
             continue
 
-        # Skip if already in calendar
-        if event_exists(task_id):
-            logging.info(f"Skipping {task_name}: already scheduled.")
-            continue
-
-        # Process each day
         for day in days:
             if day not in days_of_week:
                 logging.warning(f"Unknown day '{day}' for task {task_name}, skipping.")
@@ -99,21 +108,23 @@ def spread_tasks():
 
             task_datetime = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
-            # Create calendar entry
+            # Create Google Calendar event
             try:
-                notion.pages.create(
-                    parent={"database_id": CALENDAR_DB_ID},
+                event_id, event_link = create_google_event(task_name, task_datetime)
+                logging.info(f"Created Google Calendar event: {event_link}")
+
+                # Store the Google Event ID in Notion for deduplication
+                notion.pages.update(
+                    page_id=task_id,
                     properties={
-                        "Name": {"title": [{"text": {"content": task_name}}]},
-                        "Date": {"date": {"start": task_datetime.isoformat()}},
-                        "Original Task ID": {"rich_text": [{"text": {"content": task_id}}]}  # For deduplication
+                        "Google Event ID": {
+                            "rich_text": [{"text": {"content": event_id}}]
+                        }
                     }
                 )
-                logging.info(f"Created calendar event for {task_name} on {task_datetime}")
             except Exception as e:
-                logging.error(f"Failed to create event for {task_name}: {e}")
-
+                logging.error(f"Failed to create calendar event for {task_name}: {e}")
 
 # ----------------- Run -----------------
 if __name__ == "__main__":
-    spread_tasks()
+    push_tasks_to_calendar()
