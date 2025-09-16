@@ -1,5 +1,6 @@
 import os
 import logging
+from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from notion_client import Client
 from googleapiclient.discovery import build
@@ -8,6 +9,7 @@ from google.oauth2 import service_account
 # ----------------- Setup -----------------
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
+load_dotenv()
 # Notion setup
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 TASKS_DB_ID = os.getenv("TASKS_DB_ID")
