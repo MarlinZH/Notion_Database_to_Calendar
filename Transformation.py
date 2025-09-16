@@ -10,9 +10,12 @@ from google.oauth2 import service_account
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 load_dotenv()
+
 # Notion setup
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+NOTION_TOKEN = os.getenv("NOTION_API_KEY")
+print(f"NOTION_TOKEN: {NOTION_TOKEN}")
 TASKS_DB_ID = os.getenv("TASKS_DB_ID")
+print(f"TASKS_DB_ID: {TASKS_DB_ID}")
 
 notion = Client(auth=NOTION_TOKEN)
 
