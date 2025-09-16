@@ -16,7 +16,7 @@ notion = Client(auth=NOTION_TOKEN)
 
 # Google Calendar setup
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT")  # path to JSON file
+SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to JSON file
 CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to primary calendar
 
 credentials = service_account.Credentials.from_service_account_file(
