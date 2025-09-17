@@ -13,9 +13,7 @@ load_dotenv()
 
 # Notion setup
 NOTION_TOKEN = os.getenv("NOTION_API_KEY")
-print(f"NOTION_TOKEN: {NOTION_TOKEN}")
 TASKS_DB_ID = os.getenv("NOTION_DATABASE_ID")   
-print(f"TASKS_DB_ID: {TASKS_DB_ID}")
 
 notion = Client(auth=NOTION_TOKEN)
 
@@ -31,12 +29,12 @@ calendar_service = build('calendar', 'v3', credentials=credentials)
 
 # Days mapping
 days_of_week = {
-    "Monday": 0,
-    "Tuesday": 1,
-    "Wednesday": 2,
-    "Thursday": 3,
-    "Friday": 4,
-    "Saturday": 5,
+    "1-Monday": 0,
+    "2-Tuesday": 1,
+    "3-Wednesday": 2,
+    "4-Thursday": 3,
+    "5-Friday": 4,
+    "6-Saturday": 5,
     "Sunday": 6
 }
 
@@ -55,8 +53,10 @@ def get_all_tasks(db_id):
 
 def get_next_weekday(base_date, target_weekday):
     days_ahead = target_weekday - base_date.weekday()
+    print(f"Days ahead: {days_ahead}")
     if days_ahead <= 0:
         days_ahead += 7
+        print(f"Adjusted days ahead: {days_ahead}")
     return base_date + timedelta(days=days_ahead)
 
 def event_exists_in_notion(task_id):
@@ -71,6 +71,7 @@ def create_google_event(task_name, task_datetime):
         'summary': task_name,
         'start': {'dateTime': task_datetime.isoformat(), 'timeZone': 'America/New_York'},
         'end': {'dateTime': (task_datetime + timedelta(hours=1)).isoformat(), 'timeZone': 'America/New_York'},
+       'RRULE': {'freq': 'WEEKLY', 'byweekday': [days_of_week[day]]}
     }
     created_event = calendar_service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
     return created_event['id'], created_event.get('htmlLink')
@@ -83,16 +84,18 @@ def push_tasks_to_calendar():
     for task in tasks:
         task_id = task["id"]
         props = task.get("properties", {})
-
+        print(props["Tasks"]["title"][0]["text"]["content"])
+        # print(props)
         # Skip if already linked to Google Calendar
         if event_exists_in_notion(task_id):
             logging.info(f"Skipping {task_id}: already linked to calendar.")
             continue
 
         try:
-            task_name = props["Name"]["title"][0]["text"]["content"]
+            task_name = props["Tasks"]["title"][0]["text"]["content"]
             time_slot = props["Time Slot"]["rich_text"][0]["text"]["content"]
-            days = [d["name"] for d in props["Days"]["multi_select"]]
+            days = [d["name"] for d in props["Day of the Week"]["multi_select"]]
+            print("FINISIHED PROPERTIES")
         except (KeyError, IndexError) as e:
             logging.warning(f"Skipping {task_id}: missing required property ({e})")
             continue
@@ -105,10 +108,16 @@ def push_tasks_to_calendar():
             weekday_index = days_of_week[day]
             target_date = get_next_weekday(today, weekday_index)
 
+            
+
             try:
-                hour, minute = map(int, time_slot.split(":"))
-            except ValueError:
-                logging.warning(f"Invalid time format '{time_slot}' for task {task_name}, skipping.")
+                if len(time_slot) == 4 and time_slot.isdigit():
+                    hour = int(time_slot[:2])
+                    minute = int(time_slot[2:])
+                else:
+                    raise ValueError("Expected HHMM format, e.g., 0600 or 1345")
+            except ValueError as e:
+                logging.warning(f"Invalid time format '{time_slot}' for task {task_name}, skipping. ({e})")
                 continue
 
             task_datetime = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
