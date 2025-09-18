@@ -5,32 +5,35 @@ from datetime import datetime, timedelta, timezone
 from notion_client import Client
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+from googleapiclient.errors import HttpError
 
-# ----------------- Setup -----------------
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
+#Load env
 load_dotenv()
+
+#Logging setup
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Notion setup
 NOTION_TOKEN = os.getenv("NOTION_API_KEY")
-TASKS_DB_ID = os.getenv("NOTION_DATABASE_ID")   
+NOTION_DB_ID = os.getenv("NOTION_DATABASE_ID")   
 
 notion = Client(auth=NOTION_TOKEN)
 
 # Google Calendar setup
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to JSON file
-CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to primary calendar
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to JSON file
+GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to primary calendar
 
 credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES
 )
+
 calendar_service = build('calendar', 'v3', credentials=credentials)
 
 # Days mapping
 days_of_week = {
     "1-Monday": 0,
-    "2-Tuesday": 1,
+    "2-Tuesday": 1, 
     "3-Wednesday": 2,
     "4-Thursday": 3,
     "5-Friday": 4,
