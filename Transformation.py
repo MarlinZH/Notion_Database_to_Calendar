@@ -17,13 +17,13 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 NOTION_TOKEN = os.getenv("NOTION_API_KEY")
 NOTION_DB_ID = os.getenv("NOTION_DATABASE_ID")   
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to JSON file
+GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to primary calendar
 
 notion = Client(auth=NOTION_TOKEN)
 
-# Google Calendar setup
+
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to JSON file
-GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to primary calendar
 
 credentials = service_account.Credentials.from_service_account_file(
     GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES
