@@ -3,58 +3,57 @@
 Notion -> Google Calendar one-way sync.
 
 Features:
-- Reads pages from a Notion database (filter/page size configurable).
+- Reads pages from a Notion database.
 - Converts Notion Date properties into Google Calendar event payloads.
-- Creates events in Google Calendar, or updates existing events if the Notion page
-  contains a 'Google Event ID' property.
-- Writes the created event ID back to the Notion page (requires a Rich Text property
-  on the Notion DB named 'Google Event ID').
-- Supports dry-run mode for testing.
+- Handles both all-day and datetime events using datetime + dateutil.parser.
+- Creates events in Google Calendar, or updates existing ones if a 'Google Event ID'
+  property exists on the Notion page.
+- Writes the created/updated event ID back to Notion.
 
-Requirements (pip):
-  pip install notion-client google-api-python-client google-auth python-dotenv
-
-Environment variables (example .env shown below):
+Environment variables (.env):
   NOTION_TOKEN=secret_...
   NOTION_DATABASE_ID=...
   GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/service-account.json
-  GOOGLE_CALENDAR_ID=primary              # or a calendar id string
-  TIMEZONE=America/New_York               # default timezone used for events
+  GOOGLE_CALENDAR_ID=primary
+  TIMEZONE=America/New_York
 """
 
 import os
 import logging
 import time
 from typing import Dict, Any, Optional, List
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from notion_client import Client as NotionClient
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from dateutil import parser as date_parser
 
 # Load env
 load_dotenv()
 
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+NOTION_TOKEN = os.getenv("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")  # path to JSON file
+GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary') 
 TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 
-# Safety: dry-run default True; set to False to actually write to Google & Notion
+# Safety: dry-run default True
 DRY_RUN = True
 
-# Notion property names (adjust if your DB uses different column names)
-NOTION_TITLE_PROP = "Name"            # title property in Notion DB
-NOTION_DATE_PROP = "Due Date"         # date property name in Notion DB
-NOTION_EVENT_ID_PROP = "Google Event ID"  # must exist in DB as Rich Text (or Text) to store the calendar event id
+# Notion property names (adjust if different)
+NOTION_TITLE_PROP = "Name"              # title property
+NOTION_DATE_PROP = "Due Date"           # date property
+NOTION_EVENT_ID_PROP = "Google Event ID"  # text/rich_text property
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("notion_to_calendar")
 
 
+# --- Clients ---
 def build_notion_client() -> NotionClient:
     if not NOTION_TOKEN:
         raise ValueError("NOTION_TOKEN is not set.")
@@ -71,8 +70,8 @@ def build_calendar_service():
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
+# --- Notion helpers ---
 def query_notion_database(notion: NotionClient, database_id: str, page_size: int = 100) -> List[Dict[str, Any]]:
-    """Query the Notion database and return list of pages (full responses)."""
     pages = []
     start_cursor = None
     while True:
@@ -92,7 +91,6 @@ def extract_title(page: Dict[str, Any]) -> str:
     title_prop = props.get(NOTION_TITLE_PROP)
     if not title_prop:
         return "(no title property)"
-    # Notion title type structure
     for rich in title_prop.get("title", []):
         if "plain_text" in rich and rich["plain_text"]:
             return rich["plain_text"]
@@ -106,48 +104,7 @@ def extract_date_property(page: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     date_prop = props.get(NOTION_DATE_PROP)
     if not date_prop:
         return None
-    # Notion date property sits under date -> {start, end, time_zone?}
-    date_obj = date_prop.get("date")
-    return date_obj
-
-
-def notion_date_is_datetime(date_str: str) -> bool:
-    """Rudimentary: Notion date-time strings include 'T' when they have a time."""
-    return "T" in date_str
-
-
-def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Build a Google Calendar event payload from a Notion date object.
-    Handles date-only (all-day) and datetime events.
-    """
-    start = date_obj.get("start")
-    end = date_obj.get("end", None)
-
-    if not start:
-        raise ValueError("Date object missing 'start'.")
-
-    # All-day event (date-only) -> use 'date'
-    if not notion_date_is_datetime(start):
-        # Notion uses 'YYYY-MM-DD' for date-only
-        payload = {
-            "summary": title,
-            "start": {"date": start},
-            # For all-day events, Google 'end' should be the day after the last day (Notion end is inclusive?).
-            # Notion's end for date-only is typically the same or next day depending on how it's set.
-            "end": {"date": end or start},
-        }
-        return payload
-
-    # Datetime event -> use dateTime and timezone
-    start_dt = start
-    end_dt = end or start_dt
-    payload = {
-        "summary": title,
-        "start": {"dateTime": start_dt, "timeZone": TIMEZONE},
-        "end": {"dateTime": end_dt, "timeZone": TIMEZONE},
-    }
-    return payload
+    return date_prop.get("date")
 
 
 def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
@@ -155,69 +112,75 @@ def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
     ev_prop = props.get(NOTION_EVENT_ID_PROP)
     if not ev_prop:
         return None
-    # Could be rich_text or title etc. Try common patterns:
-    if "rich_text" in ev_prop:
-        texts = ev_prop.get("rich_text") or []
-        if texts:
-            return texts[0].get("plain_text") or texts[0].get("text", {}).get("content")
-    if "title" in ev_prop:
-        titles = ev_prop.get("title") or []
-        if titles:
-            return titles[0].get("plain_text")
     if "rich_text" in ev_prop and ev_prop["rich_text"]:
         return ev_prop["rich_text"][0].get("plain_text")
-    # fallback: try to read plain text from top-level
+    if "title" in ev_prop and ev_prop["title"]:
+        return ev_prop["title"][0].get("plain_text")
     return None
 
 
 def notion_patch_event_id(notion: NotionClient, page_id: str, event_id: str) -> None:
-    """
-    Update the Notion page to set the Google Event ID property (must exist on the DB).
-    Uses rich_text update (safe for most DB configurations).
-    """
     try:
         notion.pages.update(
             page_id=page_id,
-            properties={
-                NOTION_EVENT_ID_PROP: {
-                    "rich_text": [{"text": {"content": event_id}}]
-                }
-            }
+            properties={NOTION_EVENT_ID_PROP: {"rich_text": [{"text": {"content": event_id}}]}}
         )
         logger.info("Wrote event id to Notion page %s: %s", page_id, event_id)
     except Exception as e:
         logger.exception("Failed to write event id to Notion page %s: %s", page_id, e)
 
 
+# --- Calendar helpers ---
+def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build a Google Calendar event payload from a Notion date object.
+    Uses datetime + dateutil.parser for robustness.
+    """
+    start_str = date_obj.get("start")
+    end_str = date_obj.get("end")
+
+    if not start_str:
+        raise ValueError("Date object missing 'start'.")
+
+    is_all_day = "T" not in start_str
+
+    if is_all_day:
+        start_date = date_parser.parse(start_str).date()
+        end_date = date_parser.parse(end_str).date() if end_str else start_date + timedelta(days=1)
+        return {
+            "summary": title,
+            "start": {"date": start_date.isoformat()},
+            "end": {"date": end_date.isoformat()},
+        }
+    else:
+        start_dt = date_parser.parse(start_str)
+        end_dt = date_parser.parse(end_str) if end_str else start_dt + timedelta(hours=1)
+        return {
+            "summary": title,
+            "start": {"dateTime": start_dt.isoformat(), "timeZone": TIMEZONE},
+            "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
+        }
+
+
 def create_calendar_event(service, calendar_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Creates a Google Calendar event and returns the created event object."""
     if DRY_RUN:
         logger.info("[DRY RUN] Would create event: %s", event_payload)
-        # Simulate response shape for dry-run
         return {"id": "dry-run-event-id", **event_payload}
-    try:
-        created = service.events().insert(calendarId=calendar_id, body=event_payload).execute()
-        logger.info("Created event: %s (%s)", created.get("summary"), created.get("id"))
-        return created
-    except HttpError as e:
-        logger.exception("Google Calendar API error creating event: %s", e)
-        raise
+    created = service.events().insert(calendarId=calendar_id, body=event_payload).execute()
+    logger.info("Created event: %s (%s)", created.get("summary"), created.get("id"))
+    return created
 
 
 def update_calendar_event(service, calendar_id: str, event_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Updates an existing Calendar event. If event not found, raises."""
     if DRY_RUN:
         logger.info("[DRY RUN] Would update event %s: %s", event_id, event_payload)
         return {"id": event_id, **event_payload}
-    try:
-        updated = service.events().update(calendarId=calendar_id, eventId=event_id, body=event_payload).execute()
-        logger.info("Updated event: %s (%s)", updated.get("summary"), updated.get("id"))
-        return updated
-    except HttpError as e:
-        logger.exception("Google Calendar API error updating event %s: %s", event_id, e)
-        raise
+    updated = service.events().update(calendarId=calendar_id, eventId=event_id, body=event_payload).execute()
+    logger.info("Updated event: %s (%s)", updated.get("summary"), updated.get("id"))
+    return updated
 
 
+# --- Sync ---
 def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, Any]) -> None:
     page_id = page.get("id")
     title = extract_title(page)
@@ -235,25 +198,18 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
     existing_event_id = get_page_event_id(page)
     try:
         if existing_event_id:
-            # Try update
             try:
-                logger.info("Attempting to update existing event %s for page %s", existing_event_id, page_id)
                 updated = update_calendar_event(service, calendar_id, existing_event_id, payload)
-                # If update succeeded and we want to ensure ID recorded, patch Notion (optional)
                 if not DRY_RUN:
                     notion_patch_event_id(notion, page_id, updated.get("id"))
             except HttpError as e:
-                # If event not found (404), create new and overwrite the ID in Notion
-                if hasattr(e, "status_code") and e.status_code == 404 or "404" in str(e):
-                    logger.warning("Event %s not found in Google Calendar, creating new one", existing_event_id)
+                if "404" in str(e):
                     created = create_calendar_event(service, calendar_id, payload)
                     if not DRY_RUN:
                         notion_patch_event_id(notion, page_id, created.get("id"))
                 else:
-                    logger.exception("Unexpected HttpError updating event: %s", e)
                     raise
         else:
-            # Create new event
             created = create_calendar_event(service, calendar_id, payload)
             if created and created.get("id") and not DRY_RUN:
                 notion_patch_event_id(notion, page_id, created.get("id"))
@@ -275,8 +231,7 @@ def run_sync(dry_run: bool = True, max_pages: Optional[int] = None):
         logger.info("Processing page %d/%d", i, len(pages))
         try:
             sync_page(notion, service, GOOGLE_CALENDAR_ID, page)
-            # Gentle pacing to avoid quotas
-            time.sleep(0.2)
+            time.sleep(0.2)  # throttle
         except Exception as e:
             logger.exception("Unhandled error syncing page %s: %s", page.get("id"), e)
 
