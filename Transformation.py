@@ -223,7 +223,7 @@ def run_sync(dry_run: bool = True, max_pages: Optional[int] = None):
     DRY_RUN = dry_run
     notion = build_notion_client()
     service = build_calendar_service()
-    pages = query_notion_database(notion, NOTION_DATABASE_ID)
+    pages = query_notion_database(notion, NOTION_DB_ID)
     if max_pages:
         pages = pages[:max_pages]
     logger.info("Processing %d pages", len(pages))
