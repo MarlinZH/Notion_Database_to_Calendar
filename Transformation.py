@@ -42,7 +42,7 @@ GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to 
 TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 
 # Safety: dry-run default True
-DRY_RUN = False
+DRY_RUN = True
 
 # Notion property names (adjust if different)
 NOTION_TITLE_PROP = "Name"              # title property
