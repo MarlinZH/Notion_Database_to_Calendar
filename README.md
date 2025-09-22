@@ -1,7 +1,9 @@
 #Notion Database to Calendar
+
 This project automates the transformation of Notion database items into Google Calendar events for streamlined planning and scheduling.
 
-Purpose
+#Purpose
+
 To create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events..
 
 Features
