@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 Notion -> Google Calendar one-way sync.
@@ -249,7 +248,27 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
                     logger.error(f"Failed to create calendar event for {title} on {event_start.date()}: {e}")
                 current += timedelta(days=7)
         return
-    # ...existing code...
+    existing_event_id = get_page_event_id(page)
+    try:
+        if existing_event_id:
+            try:
+                updated = update_calendar_event(service, calendar_id, existing_event_id, payload)
+                if not DRY_RUN:
+                    notion_patch_event_id(notion, page_id, updated.get("id"))
+            except HttpError as e:
+                if "404" in str(e):
+                    created = create_calendar_event(service, calendar_id, payload)
+                    if not DRY_RUN:
+                        notion_patch_event_id(notion, page_id, created.get("id"))
+                else:
+                    raise
+        else:
+            created = create_calendar_event(service, calendar_id, payload)
+            if created and created.get("id") and not DRY_RUN:
+                notion_patch_event_id(notion, page_id, created.get("id"))
+    except Exception as e:
+        logger.exception("Error syncing page %s: %s", page_id, e)
+
 
 
 def run_sync(dry_run: bool = True, max_pages: Optional[int] = None):
