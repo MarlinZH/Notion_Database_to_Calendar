@@ -42,11 +42,11 @@ GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", 'primary')    # default to 
 TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 
 # Safety: dry-run default True
-DRY_RUN = True
+DRY_RUN = False
 
 # Notion property names (adjust if different)
 NOTION_TITLE_PROP = "Name"              # title property
-NOTION_DATE_PROP = "Due Date"           # date property
+NOTION_DATE_PROP = "Date"           # date property
 NOTION_EVENT_ID_PROP = "Google Event ID"  # text/rich_text property
 
 # Logging
@@ -187,35 +187,69 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
     title = extract_title(page)
     date_obj = extract_date_property(page)
     if not date_obj:
-        logger.info("Skipping page %s (no date property)", page_id)
-        return
-
-    try:
-        payload = build_event_payload(title, date_obj)
-    except Exception as e:
-        logger.exception("Failed building payload for page %s: %s", page_id, e)
-        return
-
-    existing_event_id = get_page_event_id(page)
-    try:
-        if existing_event_id:
-            try:
-                updated = update_calendar_event(service, calendar_id, existing_event_id, payload)
-                if not DRY_RUN:
-                    notion_patch_event_id(notion, page_id, updated.get("id"))
-            except HttpError as e:
-                if "404" in str(e):
+        # Try to get Day of the Week and Time Slot
+        props = page.get("properties", {})
+        day_prop = props.get("Day of the Week", {})
+        time_prop = props.get("Time Slot", {})
+        days = [d["name"] for d in day_prop.get("multi_select", [])]
+        time_slot = None
+        if "rich_text" in time_prop and time_prop["rich_text"]:
+            time_slot = time_prop["rich_text"][0]["plain_text"] if "plain_text" in time_prop["rich_text"][0] else time_prop["rich_text"][0]["text"]["content"]
+        if not days or not time_slot:
+            logger.info(f"Skipping page {page_id} (no date property and missing Day of the Week or Time Slot)")
+            return
+        # Map day names to weekday numbers
+        day_map = {
+            "Monday": 0,
+            "Tuesday": 1,
+            "Wednesday": 2,
+            "Thursday": 3,
+            "Friday": 4,
+            "Saturday": 5,
+            "Sunday": 6
+        }
+        # Parse time_slot (expects HHMM)
+        try:
+            if len(time_slot) == 4 and time_slot.isdigit():
+                hour = int(time_slot[:2])
+                minute = int(time_slot[2:])
+            else:
+                raise ValueError("Expected HHMM format, e.g., 0600 or 1345")
+        except Exception as e:
+            logger.warning(f"Invalid time format '{time_slot}' for page {page_id}, skipping. ({e})")
+            return
+        # Generate dates for each weekday until end of year
+        today = datetime.now()
+        end_date = datetime(today.year, 12, 31)
+        for day in days:
+            # Remove any prefix like '1-Monday'
+            day_name = day.split('-')[-1] if '-' in day else day
+            weekday_num = day_map.get(day_name)
+            if weekday_num is None:
+                logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
+                continue
+            # Find first occurrence
+            current = today
+            while current.weekday() != weekday_num:
+                current += timedelta(days=1)
+            # Loop through all occurrences until end of year
+            while current <= end_date:
+                event_start = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                event_end = event_start + timedelta(hours=1)
+                payload = {
+                    "summary": title,
+                    "start": {"dateTime": event_start.isoformat(), "timeZone": TIMEZONE},
+                    "end": {"dateTime": event_end.isoformat(), "timeZone": TIMEZONE},
+                }
+                try:
                     created = create_calendar_event(service, calendar_id, payload)
-                    if not DRY_RUN:
+                    if created and created.get("id") and not DRY_RUN:
                         notion_patch_event_id(notion, page_id, created.get("id"))
-                else:
-                    raise
-        else:
-            created = create_calendar_event(service, calendar_id, payload)
-            if created and created.get("id") and not DRY_RUN:
-                notion_patch_event_id(notion, page_id, created.get("id"))
-    except Exception as e:
-        logger.exception("Error syncing page %s: %s", page_id, e)
+                except Exception as e:
+                    logger.error(f"Failed to create calendar event for {title} on {event_start.date()}: {e}")
+                current += timedelta(days=7)
+        return
+    # ...existing code...
 
 
 def run_sync(dry_run: bool = True, max_pages: Optional[int] = None):
