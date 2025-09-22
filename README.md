@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 pip install -r Requirements.txt
 
 # Notion Database to Calendar
@@ -5,6 +6,15 @@ pip install -r Requirements.txt
 This project automates the transformation of Notion database items into Google Calendar events for streamlined planning and scheduling.
 
 ## Purpose
+=======
+#Notion Database to Calendar
+
+This project automates the transformation of Notion database items into Google Calendar events for streamlined planning and scheduling.
+
+#Purpose
+
+To create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events..
+>>>>>>> 4e14de867945c21d289c6d09dfd842c71efb6d0c
 
 Create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events.
 
@@ -25,6 +35,7 @@ Create a connector that syncs tasks from a Notion database to Google Calendar, e
 	  - `GOOGLE_SERVICE_ACCOUNT.json` (Google API credentials)
 	  - `.env` file with Notion and Google Calendar IDs
 
+<<<<<<< HEAD
 2. **Transformation Logic:**  
 	- The script (`Transformation.py`) fetches all tasks from the Notion database.
 	- For each task, it reads the "Tasks", "Day of the Week", and "Time Slot" properties.
@@ -77,3 +88,21 @@ Create a connector that syncs tasks from a Notion database to Google Calendar, e
 
 - If you see warnings about missing properties, ensure all Notion database rows have the required fields.
 - Check your credentials and environment variables if API requests fail.
+=======
+NOTION_API_KEY=your_notion_token
+NOTION_DATABASE_ID=your_database_id
+GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_SERVICE_ACCOUNT.json
+GOOGLE_CALENDAR_ID=your_calendar_id (optional, defaults to 'primary')
+
+Run the transformation script:
+
+python Transformation.py
+Notion Database Structure
+Tasks: Title of the task (required)
+Day of the Week: Multi-select (e.g., "1-Monday", "2-Tuesday", ...)
+Time Slot: Text (e.g., "0600" for 6:00 AM)
+Frequency: (Optional, e.g., "Daily")
+Troubleshooting
+If you see warnings about missing properties, ensure all Notion database rows have the required fields.
+Check your credentials and environment variables if API requests fail.
+>>>>>>> 4e14de867945c21d289c6d09dfd842c71efb6d0c
