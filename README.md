@@ -44,7 +44,11 @@ Install dependencies:
 pip install -r Requirements.txt
 Set up your .env file with the following variables:
 
-NOTION_API_KEY=your_notion_tokenNOTION_DATABASE_ID=your_database_idGOOGLE_APPLICATION_CREDENTIALS=GOOGLE_SERVICE_ACCOUNT.jsonGOOGLE_CALENDAR_ID=your_calendar_id (optional, defaults to 'primary')
+NOTION_API_KEY=your_notion_token
+NOTION_DATABASE_ID=your_database_id
+GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_SERVICE_ACCOUNT.json
+GOOGLE_CALENDAR_ID=your_calendar_id (optional, defaults to 'primary')
+
 Run the transformation script:
 
 python Transformation.py
