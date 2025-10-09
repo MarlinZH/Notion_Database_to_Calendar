@@ -110,25 +110,25 @@ def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
     if not ev_prop:
         return None
     if "rich_text" in ev_prop and ev_prop["rich_text"]:
-    return ev_prop["rich_text"][0].get("plain_text")
+        return ev_prop["rich_text"][0].get("plain_text")
     if "title" in ev_prop and ev_prop["title"]:
-    return ev_prop["title"][0].get("plain_text")
+        return ev_prop["title"][0].get("plain_text")
     return None
 
 
-    def notion_patch_event_id(notion: NotionClient, page_id: str, event_id: str) -> None:
+def notion_patch_event_id(notion: NotionClient, page_id: str, event_id: str) -> None:
     try:
-    notion.pages.update(
-    page_id=page_id,
-    properties={NOTION_EVENT_ID_PROP: {"rich_text": [{"text": {"content": event_id}}]}}
-    )
-    logger.info("Wrote event id to Notion page %s: %s", page_id, event_id)
+        notion.pages.update(
+            page_id=page_id,
+            properties={NOTION_EVENT_ID_PROP: {"rich_text": [{"text": {"content": event_id}}]}}
+        )
+        logger.info("Wrote event id to Notion page %s: %s", page_id, event_id)
     except Exception as e:
-    logger.exception("Failed to write event id to Notion page %s: %s", page_id, e)
+        logger.exception("Failed to write event id to Notion page %s: %s", page_id, e)
 
 
-    # --- Calendar helpers ---
-    def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
+# --- Calendar helpers ---
+def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build a Google Calendar event payload from a Notion date object.
     Uses datetime + dateutil.parser for robustness.
@@ -137,83 +137,74 @@ def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
     end_str = date_obj.get("end")
 
     if not start_str:
-    raise ValueError("Date object missing 'start'.")
+        raise ValueError("Date object missing 'start'.")
 
     is_all_day = "T" not in start_str
 
     if is_all_day:
-    start_date = date_parser.parse(start_str).date()
-    end_date = date_parser.parse(end_str).date() if end_str else start_date + timedelta(days=1)
-    return {
-    "summary": title,
-    "start": {"date": start_date.isoformat()},
-    "end": {"date": end_date.isoformat()},
-    }
+        start_date = date_parser.parse(start_str).date()
+        end_date = date_parser.parse(end_str).date() if end_str else start_date + timedelta(days=1)
+        return {
+            "summary": title,
+            "start": {"date": start_date.isoformat()},
+            "end": {"date": end_date.isoformat()},
+        }
     else:
-    start_dt = date_parser.parse(start_str)
-    end_dt = date_parser.parse(end_str) if end_str else start_dt + timedelta(hours=1)
-    return {
-    "summary": title,
-    "start": {"dateTime": start_dt.isoformat(), "timeZone": TIMEZONE},
-    "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
-    }
+        start_dt = date_parser.parse(start_str)
+        end_dt = date_parser.parse(end_str) if end_str else start_dt + timedelta(hours=1)
+        return {
+            "summary": title,
+            "start": {"dateTime": start_dt.isoformat(), "timeZone": TIMEZONE},
+            "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
+        }
+    
 
 
-    def create_calendar_event(service, calendar_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
+def create_calendar_event(service, calendar_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
     if DRY_RUN:
-    logger.info("[DRY RUN] Would create event: %s", event_payload)
-    return {"id": "dry-run-event-id", **event_payload}
+        logger.info("[DRY RUN] Would create event: %s", event_payload)
+        return {"id": "dry-run-event-id", **event_payload}
     created = service.events().insert(calendarId=calendar_id, body=event_payload).execute()
     logger.info("Created event: %s (%s)", created.get("summary"), created.get("id"))
     return created
 
 
-    def update_calendar_event(service, calendar_id: str, event_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
+def update_calendar_event(service, calendar_id: str, event_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
     if DRY_RUN:
-    logger.info("[DRY RUN] Would update event %s: %s", event_id, event_payload)
-    return {"id": event_id, **event_payload}
+        logger.info("[DRY RUN] Would update event %s: %s", event_id, event_payload)
+        return {"id": event_id, **event_payload}
     updated = service.events().update(calendarId=calendar_id, eventId=event_id, body=event_payload).execute()
     logger.info("Updated event: %s (%s)", updated.get("summary"), updated.get("id"))
     return updated
 
 
-    # --- Sync ---
-    def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, Any]) -> None:
+# --- Sync ---
+def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, Any]) -> None:
     page_id = page.get("id")
     title = extract_title(page)
     date_obj = extract_date_property(page)
     if not date_obj:
-    # Try to get Day of the Week and Time Slot
-    props = page.get("properties", {})
-    day_prop = props.get("Day of the Week", {})
-    time_prop = props.get("Time Slot", {})
-    days = [d["name"] for d in day_prop.get("multi_select", [])]
-    time_slot = None
+        # Try to get Day of the Week and Time Slot
+        props = page.get("properties", {})
+        day_prop = props.get("Day of the Week", {})
+        time_prop = props.get("Time Slot", {})
+        days = [d["name"] for d in day_prop.get("multi_select", [])]
+        time_slot = None
     if "rich_text" in time_prop and time_prop["rich_text"]:
-    time_slot = time_prop["rich_text"][0]["plain_text"] if "plain_text" in time_prop["rich_text"][0] else time_prop["rich_text"][0]["text"]["content"]
+        time_slot = time_prop["rich_text"][0]["plain_text"] if "plain_text" in time_prop["rich_text"][0] else time_prop["rich_text"][0]["text"]["content"]
     if not days or not time_slot:
-    logger.info(f"Skipping page {page_id} (no date property and missing Day of the Week or Time Slot)")
-    return
-    # Map day names to weekday numbers
-    day_map = {
-    "Monday": 0,
-    "Tuesday": 1,
-    "Wednesday": 2,
-    "Thursday": 3,
-    "Friday": 4,
-    "Saturday": 5,
-    "Sunday": 6
-    }
-    # Parse time_slot (expects HHMM)
+        logger.info(f"Skipping page {page_id} (no date property and missing Day of the Week or Time Slot)")
+        return
+# Parse time_slot (expects HHMM)
     try:
-    if len(time_slot) == 4 and time_slot.isdigit():
-    hour = int(time_slot[:2])
-    minute = int(time_slot[2:])
+        if len(time_slot) == 4 and time_slot.isdigit():
+        hour = int(time_slot[:2])
+        minute = int(time_slot[2:])
     else:
-    raise ValueError("Expected HHMM format, e.g., 0600 or 1345")
+        raise ValueError("Expected HHMM format, e.g., 0600 or 1345")
     except Exception as e:
-    logger.warning(f"Invalid time format '{time_slot}' for page {page_id}, skipping. ({e})")
-    return
+        logger.warning(f"Invalid time format '{time_slot}' for page {page_id}, skipping. ({e})")
+        return
     # Generate dates for each weekday until end of year
     today = datetime.now()
     end_date = datetime(today.year, 12, 31)
@@ -297,4 +288,6 @@ def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
 
     logger.info("Starting Notion -> Google Calendar sync (dry-run=%s)", not args.no_dry_run)
     run_sync(dry_run=not args.no_dry_run, max_pages=args.max_pages)
-    logger.info("Done.")
+
+    # --- Calendar helpers ---
+    parser = argparse.ArgumentParser(description="Sync Notion DB to Google Calendar")
