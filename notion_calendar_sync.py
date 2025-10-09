@@ -75,20 +75,20 @@ def query_notion_database(notion: NotionClient, database_id: str, page_size: int
     while True:
         response = notion.databases.query(
           **{"database_id": database_id, "page_size": page_size, **({"start_cursor": start_cursor} if start_cursor else {})}
-
-    pages.extend(response.get("results", []))
-    if not response.get("has_more"):
-    break
+          )
+        pages.extend(response.get("results", []))
+        if not response.get("has_more"):
+            break
     start_cursor = response.get("next_cursor")
     logger.info("Queried Notion DB: %d pages found", len(pages))
     return pages
 
 
-    def extract_title(page: Dict[str, Any]) -> str:
+def extract_title(page: Dict[str, Any]) -> str:
     props = page.get("properties", {})
     title_prop = props.get(NOTION_TITLE_PROP)
     if not title_prop:
-    return "(no title property)"
+        return "(no title property)"
     for rich in title_prop.get("title", []):
     if "plain_text" in rich and rich["plain_text"]:
     return rich["plain_text"]
