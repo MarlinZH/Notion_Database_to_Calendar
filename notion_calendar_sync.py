@@ -198,10 +198,10 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
 # Parse time_slot (expects HHMM)
     try:
         if len(time_slot) == 4 and time_slot.isdigit():
-        hour = int(time_slot[:2])
-        minute = int(time_slot[2:])
-    else:
-        raise ValueError("Expected HHMM format, e.g., 0600 or 1345")
+            hour = int(time_slot[:2])
+            minute = int(time_slot[2:])
+        else:
+            raise ValueError("Expected HHMM format, e.g., 0600 or 1345")
     except Exception as e:
         logger.warning(f"Invalid time format '{time_slot}' for page {page_id}, skipping. ({e})")
         return
@@ -209,11 +209,11 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
     today = datetime.now()
     end_date = datetime(today.year, 12, 31)
     for day in days:
-    # Remove any prefix like '1-Monday'
-    day_name = day.split('-')[-1] if '-' in day else day
-    weekday_num = day_map.get(day_name)
+         # Remove any prefix like '1-Monday'
+        day_name = day.split('-')[-1] if '-' in day else day
+        weekday_num = day_map.get(day_name)
     if weekday_num is None:
-    logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
+        logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
     continue
     # Find first occurrence
     current = today
