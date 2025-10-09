@@ -90,26 +90,25 @@ def extract_title(page: Dict[str, Any]) -> str:
     if not title_prop:
         return "(no title property)"
     for rich in title_prop.get("title", []):
-    if "plain_text" in rich and rich["plain_text"]:
-    return rich["plain_text"]
-    if "text" in rich and "content" in rich["text"]:
-    return rich["text"]["content"]
+        if "plain_text" in rich and rich["plain_text"]:
+            return rich["plain_text"]
+        if "text" in rich and "content" in rich["text"]:
+            return rich["text"]["content"]
     return "(untitled)"
 
 
-    def extract_date_property(page: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def extract_date_property(page: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     props = page.get("properties", {})
     date_prop = props.get(NOTION_DATE_PROP)
     if not date_prop:
-    return None
+        return None
     return date_prop.get("date")
 
-
-    def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
+def get_page_event_id(page: Dict[str, Any]) -> Optional[str]:
     props = page.get("properties", {})
     ev_prop = props.get(NOTION_EVENT_ID_PROP)
     if not ev_prop:
-    return None
+        return None
     if "rich_text" in ev_prop and ev_prop["rich_text"]:
     return ev_prop["rich_text"][0].get("plain_text")
     if "title" in ev_prop and ev_prop["title"]:
