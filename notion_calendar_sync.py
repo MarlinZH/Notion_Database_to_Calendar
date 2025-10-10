@@ -218,18 +218,18 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
     # Find first occurrence
     current = today
     while current.weekday() != weekday_num:
-    current += timedelta(days=1)
+        current += timedelta(days=1)
     # Loop through all occurrences until end of year
     while current <= end_date:
-    event_start = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    event_end = event_start + timedelta(hours=1)
-    payload = {
-    "summary": title,
-    "start": {"dateTime": event_start.isoformat(), "timeZone": TIMEZONE},
-    "end": {"dateTime": event_end.isoformat(), "timeZone": TIMEZONE},
-    }
+        event_start = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        event_end = event_start + timedelta(hours=1)
+        payload = {
+            "summary": title,
+            "start": {"dateTime": event_start.isoformat(), "timeZone": TIMEZONE},
+            "end": {"dateTime": event_end.isoformat(), "timeZone": TIMEZONE},
+        }
     try:
-    created = create_calendar_event(service, calendar_id, payload)
+     created = create_calendar_event(service, calendar_id, payload)
     if created and created.get("id") and not DRY_RUN:
     notion_patch_event_id(notion, page_id, created.get("id"))
     except Exception as e:
@@ -249,37 +249,37 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
     if not DRY_RUN:
     notion_patch_event_id(notion, page_id, created.get("id"))
     else:
-    raise
+        raise
     else:
-    created = create_calendar_event(service, calendar_id, payload)
-    if created and created.get("id") and not DRY_RUN:
-    notion_patch_event_id(notion, page_id, created.get("id"))
-    except Exception as e:
-    logger.exception("Error syncing page %s: %s", page_id, e)
+        created = create_calendar_event(service, calendar_id, payload)
+        if created and created.get("id") and not DRY_RUN:
+            notion_patch_event_id(notion, page_id, created.get("id"))
+        except Exception as e:
+            logger.exception("Error syncing page %s: %s", page_id, e)
 
 
 
-    def run_sync(dry_run: bool = True, max_pages: Optional[int] = None):
+def run_sync(dry_run: bool = True, max_pages: Optional[int] = None):
     global DRY_RUN
     DRY_RUN = dry_run
     notion = build_notion_client()
     service = build_calendar_service()
     pages = query_notion_database(notion, NOTION_DB_ID)
     if max_pages:
-    pages = pages[:max_pages]
-    logger.info("Processing %d pages", len(pages))
+        pages = pages[:max_pages]
+        logger.info("Processing %d pages", len(pages))
 
     for i, page in enumerate(pages, start=1):
-    logger.info("Processing page %d/%d", i, len(pages))
+        logger.info("Processing page %d/%d", i, len(pages))
     try:
-    sync_page(notion, service, GOOGLE_CALENDAR_ID, page)
-    time.sleep(0.2)  # throttle
+        sync_page(notion, service, GOOGLE_CALENDAR_ID, page)
+        time.sleep(0.2)  # throttle
     except Exception as e:
-    logger.exception("Unhandled error syncing page %s: %s", page.get("id"), e)
+        logger.exception("Unhandled error syncing page %s: %s", page.get("id"), e)
 
 
     if __name__ == "__main__":
-    import argparse
+     import argparse
 
     parser = argparse.ArgumentParser(description="Sync Notion DB to Google Calendar")
     parser.add_argument("--no-dry-run", action="store_true", help="Disable dry-run and perform writes")
