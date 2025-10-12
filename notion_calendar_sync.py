@@ -158,8 +158,6 @@ def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
             "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
         }
     
-
-
 def create_calendar_event(service, calendar_id: str, event_payload: Dict[str, Any]) -> Dict[str, Any]:
     if DRY_RUN:
         logger.info("[DRY RUN] Would create event: %s", event_payload)
@@ -212,9 +210,9 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
          # Remove any prefix like '1-Monday'
         day_name = day.split('-')[-1] if '-' in day else day
         weekday_num = day_map.get(day_name)
-    if weekday_num is None:
-        logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
-    continue
+        if weekday_num is None:
+            logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
+        continue
     # Find first occurrence
     current = today
     while current.weekday() != weekday_num:
@@ -228,34 +226,34 @@ def sync_page(notion: NotionClient, service, calendar_id: str, page: Dict[str, A
             "start": {"dateTime": event_start.isoformat(), "timeZone": TIMEZONE},
             "end": {"dateTime": event_end.isoformat(), "timeZone": TIMEZONE},
         }
-    try:
-     created = create_calendar_event(service, calendar_id, payload)
-    if created and created.get("id") and not DRY_RUN:
-    notion_patch_event_id(notion, page_id, created.get("id"))
-    except Exception as e:
-    logger.error(f"Failed to create calendar event for {title} on {event_start.date()}: {e}")
-    current += timedelta(days=7)
-    return
+        try:
+            created = create_calendar_event(service, calendar_id, payload)
+            if created and created.get("id") and not DRY_RUN:
+                notion_patch_event_id(notion, page_id, created.get("id"))
+        except Exception as e:
+            logger.error(f"Failed to create calendar event for {title} on {event_start.date()}: {e}")
+            current += timedelta(days=7)
+            return
     existing_event_id = get_page_event_id(page)
     try:
-    if existing_event_id:
-    try:
-    updated = update_calendar_event(service, calendar_id, existing_event_id, payload)
-    if not DRY_RUN:
-    notion_patch_event_id(notion, page_id, updated.get("id"))
-    except HttpError as e:
-    if "404" in str(e):
-    created = create_calendar_event(service, calendar_id, payload)
-    if not DRY_RUN:
-    notion_patch_event_id(notion, page_id, created.get("id"))
-    else:
-        raise
-    else:
-        created = create_calendar_event(service, calendar_id, payload)
-        if created and created.get("id") and not DRY_RUN:
-            notion_patch_event_id(notion, page_id, created.get("id"))
-        except Exception as e:
-            logger.exception("Error syncing page %s: %s", page_id, e)
+        if existing_event_id:
+            try:
+                updated = update_calendar_event(service, calendar_id, existing_event_id, payload)
+                if not DRY_RUN:
+                    notion_patch_event_id(notion, page_id, updated.get("id"))
+            except HttpError as e:
+                if "404" in str(e):
+                    created = create_calendar_event(service, calendar_id, payload)
+                    if not DRY_RUN:
+                        notion_patch_event_id(notion, page_id, created.get("id"))
+                    else:
+                        raise
+                else:
+                    created = create_calendar_event(service, calendar_id, payload)
+                    if not DRY_RUN:
+                        notion_patch_event_id(notion, page_id, created.get("id"))
+    except Exception as e:
+        logger.exception("Error syncing page %s: %s", page_id, e)
 
 
 
