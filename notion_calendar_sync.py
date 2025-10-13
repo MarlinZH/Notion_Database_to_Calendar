@@ -23,7 +23,6 @@ import logging
 import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
-
 from dotenv import load_dotenv
 from notion_client import Client as NotionClient
 from google.oauth2 import service_account
