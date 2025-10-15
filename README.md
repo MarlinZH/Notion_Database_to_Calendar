@@ -14,7 +14,7 @@ This project automates the transformation of Notion database items into Google C
 #Purpose
 
 To create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events..
->>>>>>> 4e14de867945c21d289c6d09dfd842c71efb6d0c
+
 
 Create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events.
 
