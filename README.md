@@ -1,108 +1,175 @@
-<<<<<<< HEAD
-pip install -r Requirements.txt
-
 # Notion Database to Calendar
 
-This project automates the transformation of Notion database items into Google Calendar events for streamlined planning and scheduling.
+[![Run Tests](https://github.com/MarlinZH/Notion_Database_to_Calendar/workflows/Run%20Tests/badge.svg)](https://github.com/MarlinZH/Notion_Database_to_Calendar/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-## Purpose
-=======
-#Notion Database to Calendar
+A powerful automation tool that syncs your Notion database tasks to Google Calendar, enabling seamless planning and scheduling across platforms.
 
-This project automates the transformation of Notion database items into Google Calendar events for streamlined planning and scheduling.
+## ✨ Features
 
-#Purpose
+- **🔄 One-Way Sync:** Notion → Google Calendar
+- **📅 Flexible Scheduling:**
+  - Single events with specific dates
+  - Recurring events based on day of week and time
+- **🛡️ Safe Testing:** Dry-run mode to preview changes
+- **🔍 Smart Deduplication:** Prevents duplicate events
+- **⚡ Batch Processing:** Handles large databases with pagination
+- **🔧 Error Handling:** Comprehensive validation and error reporting
+- **📊 Progress Tracking:** Detailed logging and sync statistics
 
-To create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events..
+## 🚀 Quick Start
 
+### Prerequisites
 
-Create a connector that syncs tasks from a Notion database to Google Calendar, enabling easy management of routines and events.
+- Python 3.8 or higher
+- Notion account with a database
+- Google account with Calendar access
 
-## Features
+### Installation
 
-- **Fetch Tasks from Notion:** Connects to a Notion database and retrieves all tasks, supporting pagination.
-- **Google Calendar Integration:** Uses a Google service account to create calendar events for each task.
-- **Day and Time Mapping:** Maps Notion "Day of the Week" and "Time Slot" properties to calendar event dates and times.
-- **Recurring Events:** If a Notion page does not have a "Date" property, events are created for each specified weekday and time slot from today until the end of the year.
-- **Deduplication:** Checks if a task is already linked to a Google Calendar event to avoid duplicates.
-- **Error Handling:** Skips tasks with missing or invalid properties and logs warnings.
+```bash
+# Clone the repository
+git clone https://github.com/MarlinZH/Notion_Database_to_Calendar.git
+cd Notion_Database_to_Calendar
 
-## How It Works
+# Install dependencies
+pip install -r requirements.txt
 
-1. **Configuration:**  
-	- Set up environment variables for Notion and Google API credentials.
-	- Required files:  
-	  - `GOOGLE_SERVICE_ACCOUNT.json` (Google API credentials)
-	  - `.env` file with Notion and Google Calendar IDs
+# Set up environment
+cp .env.example .env
+# Edit .env with your credentials
+```
 
-<<<<<<< HEAD
-2. **Transformation Logic:**  
-	- The script (`Transformation.py`) fetches all tasks from the Notion database.
-	- For each task, it reads the "Tasks", "Day of the Week", and "Time Slot" properties.
-	- If a "Date" property is present, it creates a single event. If not, it creates events for each matching weekday until the end of the year.
-	- Creates a Google Calendar event and updates the Notion page with the event ID.
+### Basic Usage
 
-3. **Error Handling:**  
-	- If a task is missing required properties (e.g., "Tasks"), it is skipped and a warning is logged.
-	- Invalid time formats are also skipped.
+```bash
+# Test with dry-run (no changes made)
+python notion_calendar_sync.py
 
-## Requirements
+# Perform actual sync
+python notion_calendar_sync.py --no-dry-run
 
-- Python 3.8+
-- Notion API token
-- Google service account credentials
-- Required Python packages (see `Requirements.txt`):
-  - `notion-client`
-  - `google-api-python-client`
-  - `google-auth`
-  - `python-dotenv`
+# Test with limited pages
+python notion_calendar_sync.py --max-pages 5
+```
 
-## Usage
+## 📖 Documentation
 
-1. Install dependencies:
-	```bash
-	pip install -r Requirements.txt
-	```
-2. Set up your `.env` file with the following variables:
-	```
-	NOTION_API_KEY=your_notion_token
-	NOTION_DATABASE_ID=your_database_id
-	GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_SERVICE_ACCOUNT.json
-	GOOGLE_CALENDAR_ID=your_calendar_id (optional, defaults to 'primary')
-	TIMEZONE=America/New_York
-	```
-3. Run the transformation script:
-	```bash
-	python Transformation.py
-	```
+- **[Setup Guide](docs/SETUP_GUIDE.md)** - Detailed setup instructions
+- **[Examples](docs/EXAMPLES.md)** - Real-world usage examples
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[API Documentation](docs/API.md)** - Internal API reference
+- **[Contributing](CONTRIBUTING.md)** - Contribution guidelines
 
-## Notion Database Structure
+## 🗂️ Notion Database Structure
 
-- **Tasks:** Title of the task (required)
-- **Day of the Week:** Multi-select (e.g., "1-Monday", "2-Tuesday", ...)
-- **Time Slot:** Text (e.g., "0600" for 6:00 AM)
-- **Date:** (Optional, for single events)
-- **Frequency:** (Optional, e.g., "Daily")
+Your Notion database needs these properties:
 
-## Troubleshooting
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| **Name** | Title | Yes | Event title |
+| **Date** | Date | Conditional* | Specific date for one-time events |
+| **Day of the Week** | Multi-select | Conditional* | Days for recurring events |
+| **Time Slot** | Text | Conditional* | Time in HHMM format (e.g., "0600") |
+| **Google Event ID** | Rich Text | No | Auto-populated by script |
 
-- If you see warnings about missing properties, ensure all Notion database rows have the required fields.
-- Check your credentials and environment variables if API requests fail.
-=======
-NOTION_API_KEY=your_notion_token
+*Either "Date" OR both "Day of the Week" and "Time Slot" are required.
+
+### Example Entries
+
+**One-time event:**
+```
+Name: "Doctor's Appointment"
+Date: October 25, 2025, 2:00 PM
+```
+
+**Recurring event:**
+```
+Name: "Morning Workout"
+Day of the Week: 1-Monday, 3-Wednesday, 5-Friday
+Time Slot: 0630
+```
+
+## 🎯 Use Cases
+
+- **📚 Students:** Sync class schedules and assignment due dates
+- **💼 Professionals:** Manage recurring meetings and deadlines
+- **🏋️ Fitness Enthusiasts:** Track workout routines
+- **✍️ Content Creators:** Plan publication schedules
+- **👥 Teams:** Coordinate shared calendars from Notion databases
+
+## 🔧 Configuration
+
+Create a `.env` file with:
+
+```env
+NOTION_API_KEY=secret_your_notion_token
 NOTION_DATABASE_ID=your_database_id
 GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_SERVICE_ACCOUNT.json
-GOOGLE_CALENDAR_ID=your_calendar_id (optional, defaults to 'primary')
+GOOGLE_CALENDAR_ID=primary
+TIMEZONE=America/New_York
+```
 
-Run the transformation script:
+See [Setup Guide](docs/SETUP_GUIDE.md) for detailed configuration steps.
 
-python Transformation.py
-Notion Database Structure
-Tasks: Title of the task (required)
-Day of the Week: Multi-select (e.g., "1-Monday", "2-Tuesday", ...)
-Time Slot: Text (e.g., "0600" for 6:00 AM)
-Frequency: (Optional, e.g., "Daily")
-Troubleshooting
-If you see warnings about missing properties, ensure all Notion database rows have the required fields.
-Check your credentials and environment variables if API requests fail.
->>>>>>> 4e14de867945c21d289c6d09dfd842c71efb6d0c
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Quick Contribution Steps
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Notion API](https://developers.notion.com/)
+- [Google Calendar API](https://developers.google.com/calendar)
+- All contributors who have helped improve this project
+
+## 📊 Project Stats
+
+- **Language:** Python 3.8+
+- **Dependencies:** 7 packages
+- **Tests:** Basic unit tests included
+- **CI/CD:** GitHub Actions
+
+## 🐛 Bug Reports & Feature Requests
+
+Found a bug or have a feature idea? Please [open an issue](https://github.com/MarlinZH/Notion_Database_to_Calendar/issues)!
+
+## 💬 Support
+
+Need help? Check:
+1. [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+2. [Existing Issues](https://github.com/MarlinZH/Notion_Database_to_Calendar/issues)
+3. Open a new issue with details
+
+## 🗺️ Roadmap
+
+- [ ] Two-way sync (Calendar → Notion)
+- [ ] Web interface for configuration
+- [ ] Multiple database support
+- [ ] Event categories and colors
+- [ ] Reminder notifications
+- [ ] Docker containerization
+- [ ] Event deletion sync
+- [ ] Conflict resolution
+
+## 📈 Version History
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and changes.
+
+---
+
+**Made with ❤️ by the community**
+
+If this project helps you, please give it a ⭐!
