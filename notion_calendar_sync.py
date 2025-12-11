@@ -9,6 +9,9 @@ Features:
 - Creates events in Google Calendar, or updates existing ones if a 'Google Event ID'
   property exists on the Notion page.
 - Writes the created/updated event ID back to Notion.
+- Supports Duration field for custom event lengths
+- Implements Frequency-based recurring events (Daily, Weekly, Bi-Weekly, Monthly, Bi-Monthly)
+- Supports Priority-based color coding in Google Calendar
 
 Environment variables (.env):
   NOTION_API_KEY=secret_...
@@ -30,6 +33,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dateutil import parser as date_parser
+from dateutil.relativedelta import relativedelta
 
 # Load environment variables
 load_dotenv()
@@ -44,12 +48,15 @@ TIMEZONE = os.getenv("TIMEZONE", "America/New_York")
 # Safety: dry-run default True
 DRY_RUN = True
 
-# Notion property names (adjust if different)
-NOTION_TITLE_PROP = "Name"
+# Notion property names (updated to match your database)
+NOTION_TITLE_PROP = "Tasks"  # Updated from "Name" to "Tasks"
 NOTION_DATE_PROP = "Date"
 NOTION_EVENT_ID_PROP = "Google Event ID"
 NOTION_DAY_PROP = "Day of the Week"
 NOTION_TIME_PROP = "Time Slot"
+NOTION_DURATION_PROP = "Duration"  # New: Duration in minutes
+NOTION_PRIORITY_PROP = "Priority"  # New: For color coding
+NOTION_FREQUENCY_PROP = "Frequency"  # New: For recurrence pattern
 
 # Weekday mapping (Monday=0, Sunday=6)
 DAY_MAP = {
@@ -60,6 +67,23 @@ DAY_MAP = {
     "Friday": 4,
     "Saturday": 5,
     "Sunday": 6,
+}
+
+# Frequency to days mapping
+FREQUENCY_MAP = {
+    "Daily": 1,
+    "Weekly": 7,
+    "Bi-Weekly": 14,
+    "Monthly": None,  # Uses relativedelta
+    "Bi-Monthly": None,  # Uses relativedelta
+}
+
+# Priority to Google Calendar color ID mapping
+# https://developers.google.com/calendar/api/v3/reference/colors
+PRIORITY_COLORS = {
+    "High": "11",      # Red
+    "Medium": "5",     # Yellow/Banana
+    "Low": "10",       # Green/Basil
 }
 
 # Logging configuration
@@ -178,6 +202,50 @@ def extract_days_and_time(page: Dict[str, Any]) -> Tuple[List[str], Optional[str
     return days, time_slot
 
 
+def extract_duration(page: Dict[str, Any]) -> float:
+    """Extract duration in hours from Notion page (Duration field is in minutes)."""
+    props = page.get("properties", {})
+    duration_prop = props.get(NOTION_DURATION_PROP)
+    
+    if duration_prop and "number" in duration_prop and duration_prop["number"] is not None:
+        minutes = duration_prop["number"]
+        hours = minutes / 60.0
+        logger.debug(f"Duration: {minutes} minutes = {hours} hours")
+        return hours
+    
+    # Default to 1 hour if no duration specified
+    return 1.0
+
+
+def extract_priority(page: Dict[str, Any]) -> Optional[str]:
+    """Extract priority from Notion page."""
+    props = page.get("properties", {})
+    priority_prop = props.get(NOTION_PRIORITY_PROP, {})
+    
+    if "select" in priority_prop and priority_prop["select"]:
+        return priority_prop["select"]["name"]
+    
+    return None
+
+
+def extract_frequency(page: Dict[str, Any]) -> Optional[str]:
+    """Extract frequency from Notion page."""
+    props = page.get("properties", {})
+    frequency_prop = props.get(NOTION_FREQUENCY_PROP, {})
+    
+    if "select" in frequency_prop and frequency_prop["select"]:
+        return frequency_prop["select"]["name"]
+    
+    return None
+
+
+def get_event_color(priority: Optional[str]) -> Optional[str]:
+    """Get Google Calendar color ID based on priority."""
+    if priority and priority in PRIORITY_COLORS:
+        return PRIORITY_COLORS[priority]
+    return None
+
+
 def parse_time_slot(time_slot: str) -> Tuple[int, int]:
     """Parse time slot string (HHMM format) into hour and minute."""
     if len(time_slot) != 4 or not time_slot.isdigit():
@@ -222,7 +290,11 @@ def notion_patch_event_id(notion: NotionClient, page_id: str, event_id: str) -> 
         logger.error(f"Failed to write event ID to Notion page {page_id}: {e}")
 
 
-def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
+def build_event_payload(
+    title: str, 
+    date_obj: Dict[str, Any], 
+    color_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Build a Google Calendar event payload from a Notion date object.
     Handles both all-day and datetime events.
@@ -235,13 +307,15 @@ def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
     
     is_all_day = "T" not in start_str
     
+    payload = {}
+    
     if is_all_day:
         start_date = date_parser.parse(start_str).date()
         end_date = (
             date_parser.parse(end_str).date() if end_str 
             else start_date + timedelta(days=1)
         )
-        return {
+        payload = {
             "summary": title,
             "start": {"date": start_date.isoformat()},
             "end": {"date": end_date.isoformat()},
@@ -252,23 +326,39 @@ def build_event_payload(title: str, date_obj: Dict[str, Any]) -> Dict[str, Any]:
             date_parser.parse(end_str) if end_str 
             else start_dt + timedelta(hours=1)
         )
-        return {
+        payload = {
             "summary": title,
             "start": {"dateTime": start_dt.isoformat(), "timeZone": TIMEZONE},
             "end": {"dateTime": end_dt.isoformat(), "timeZone": TIMEZONE},
         }
+    
+    # Add color if priority is set
+    if color_id:
+        payload["colorId"] = color_id
+    
+    return payload
 
 
 def build_event_payload_from_time(
-    title: str, event_datetime: datetime, duration_hours: int = 1
+    title: str, 
+    event_datetime: datetime, 
+    duration_hours: float = 1.0,
+    color_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Build event payload from a datetime and duration."""
     event_end = event_datetime + timedelta(hours=duration_hours)
-    return {
+    
+    payload = {
         "summary": title,
         "start": {"dateTime": event_datetime.isoformat(), "timeZone": TIMEZONE},
         "end": {"dateTime": event_end.isoformat(), "timeZone": TIMEZONE},
     }
+    
+    # Add color if priority is set
+    if color_id:
+        payload["colorId"] = color_id
+    
+    return payload
 
 
 def create_calendar_event(
@@ -305,14 +395,16 @@ def sync_page_with_date(
     calendar_id: str,
     page: Dict[str, Any],
     title: str,
-    date_obj: Dict[str, Any]
+    date_obj: Dict[str, Any],
+    priority: Optional[str] = None
 ) -> None:
     """Sync a page that has a specific date."""
     page_id = page.get("id")
     existing_event_id = get_page_event_id(page)
+    color_id = get_event_color(priority)
     
     try:
-        payload = build_event_payload(title, date_obj)
+        payload = build_event_payload(title, date_obj, color_id)
         
         if existing_event_id:
             # Try to update existing event
@@ -339,6 +431,27 @@ def sync_page_with_date(
         logger.error(f"Error syncing page {page_id} with date: {e}")
 
 
+def get_next_occurrence(
+    current: datetime, 
+    frequency: str, 
+    weekday_num: Optional[int] = None
+) -> datetime:
+    """Get the next occurrence based on frequency."""
+    if frequency == "Daily":
+        return current + timedelta(days=1)
+    elif frequency == "Weekly":
+        return current + timedelta(days=7)
+    elif frequency == "Bi-Weekly":
+        return current + timedelta(days=14)
+    elif frequency == "Monthly":
+        return current + relativedelta(months=1)
+    elif frequency == "Bi-Monthly":
+        return current + relativedelta(months=2)
+    else:
+        # Default to weekly
+        return current + timedelta(days=7)
+
+
 def sync_page_with_recurring(
     notion: NotionClient,
     service,
@@ -346,10 +459,14 @@ def sync_page_with_recurring(
     page: Dict[str, Any],
     title: str,
     days: List[str],
-    time_slot: str
+    time_slot: str,
+    duration_hours: float = 1.0,
+    priority: Optional[str] = None,
+    frequency: Optional[str] = "Weekly"
 ) -> None:
-    """Sync a page that has recurring day/time schedule."""
+    """Sync a page that has recurring day/time schedule with custom frequency."""
     page_id = page.get("id")
+    color_id = get_event_color(priority)
     
     try:
         hour, minute = parse_time_slot(time_slot)
@@ -361,24 +478,12 @@ def sync_page_with_recurring(
     end_date = datetime(today.year, 12, 31)
     events_created = 0
     
-    for day in days:
-        # Remove any prefix like '1-Monday'
-        day_name = day.split('-')[-1] if '-' in day else day
-        weekday_num = DAY_MAP.get(day_name)
-        
-        if weekday_num is None:
-            logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
-            continue
-        
-        # Find first occurrence of this weekday
+    # If frequency is Daily, ignore the days list and create events every day
+    if frequency == "Daily":
         current = today
-        while current.weekday() != weekday_num:
-            current += timedelta(days=1)
-        
-        # Create events for all occurrences until end of year
         while current <= end_date:
             event_datetime = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            payload = build_event_payload_from_time(title, event_datetime)
+            payload = build_event_payload_from_time(title, event_datetime, duration_hours, color_id)
             
             try:
                 created = create_calendar_event(service, calendar_id, payload)
@@ -391,9 +496,42 @@ def sync_page_with_recurring(
             except Exception as e:
                 logger.error(f"Failed to create event for {title} on {event_datetime.date()}: {e}")
             
-            current += timedelta(days=7)  # Next week
+            current = get_next_occurrence(current, frequency)
+    else:
+        # For non-daily frequencies, iterate through specified days of week
+        for day in days:
+            # Remove any prefix like '1-Monday'
+            day_name = day.split('-')[-1] if '-' in day else day
+            weekday_num = DAY_MAP.get(day_name)
+            
+            if weekday_num is None:
+                logger.warning(f"Unknown day '{day}' for page {page_id}, skipping.")
+                continue
+            
+            # Find first occurrence of this weekday
+            current = today
+            while current.weekday() != weekday_num:
+                current += timedelta(days=1)
+            
+            # Create events for all occurrences until end of year
+            while current <= end_date:
+                event_datetime = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                payload = build_event_payload_from_time(title, event_datetime, duration_hours, color_id)
+                
+                try:
+                    created = create_calendar_event(service, calendar_id, payload)
+                    events_created += 1
+                    
+                    # Only write first event ID back to Notion
+                    if events_created == 1 and created and created.get("id") and not DRY_RUN:
+                        notion_patch_event_id(notion, page_id, created.get("id"))
+                
+                except Exception as e:
+                    logger.error(f"Failed to create event for {title} on {event_datetime.date()}: {e}")
+                
+                current = get_next_occurrence(current, frequency or "Weekly", weekday_num)
     
-    logger.info(f"Created {events_created} recurring events for page {page_id}")
+    logger.info(f"Created {events_created} recurring events ({frequency or 'Weekly'}) for page {page_id}")
 
 
 def sync_page(
@@ -407,14 +545,19 @@ def sync_page(
         logger.warning(f"Skipping page {page_id}: no valid title")
         return
     
+    # Extract additional properties
+    priority = extract_priority(page)
+    duration_hours = extract_duration(page)
+    frequency = extract_frequency(page)
+    
     # Check if page has a specific date
     date_obj = extract_date_property(page)
     
     if date_obj:
         # Single event with specific date
-        sync_page_with_date(notion, service, calendar_id, page, title, date_obj)
+        sync_page_with_date(notion, service, calendar_id, page, title, date_obj, priority)
     else:
-        # Recurring events based on day/time
+        # Recurring events based on day/time/frequency
         days, time_slot = extract_days_and_time(page)
         
         if not days or not time_slot:
@@ -423,7 +566,10 @@ def sync_page(
             )
             return
         
-        sync_page_with_recurring(notion, service, calendar_id, page, title, days, time_slot)
+        sync_page_with_recurring(
+            notion, service, calendar_id, page, title, days, time_slot, 
+            duration_hours, priority, frequency
+        )
 
 
 def run_sync(dry_run: bool = True, max_pages: Optional[int] = None) -> None:
