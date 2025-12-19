@@ -38,7 +38,7 @@ from dateutil.relativedelta import relativedelta
 # Load environment variables
 load_dotenv()
 
-# Environment configuration
+# Environment configurations
 NOTION_TOKEN = os.getenv("NOTION_API_KEY")
 NOTION_DB_ID = os.getenv("NOTION_DATABASE_ID")
 GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
